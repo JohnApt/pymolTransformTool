@@ -117,9 +117,11 @@ def make_dialog():
         totalRotation[1] = y
         totalRotation[2] = z
         # Rotate the object about its center
-        cmd.rotate('x', dx, currentObject, origin=totalTranslation, camera=0)
-        cmd.rotate('y', dy, currentObject, origin=totalTranslation, camera=0)
-        cmd.rotate('z', dz, currentObject, origin=totalTranslation, camera=0)
+        CoM = cmd.centerofmass(currentObject)
+        
+        cmd.rotate('x', dx, currentObject, origin=CoM, camera=0)
+        cmd.rotate('y', dy, currentObject, origin=CoM, camera=0)
+        cmd.rotate('z', dz, currentObject, origin=CoM, camera=0)
         
     # total translation vector
     global totalTranslation
