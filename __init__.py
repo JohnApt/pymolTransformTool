@@ -91,13 +91,15 @@ def make_dialog():
         global translation
         rotation = [0, 0, 0]
         translation = [0, 0, 0]
-
+    
+    # TODO: Implement reset button
     # callback for the "Reset" button
-    def reset():
-        # Reset all slider values to 0
-        resetSliders()
+    # def reset():
+    #     # Reset all slider values to 0
+    #     resetSliders()
 
     # total rotation vector
+    global totalRotation
     totalRotation = [0, 0, 0]
 
     # callback for rotation sliders
@@ -120,10 +122,30 @@ def make_dialog():
         cmd.rotate('z', dz, currentObject, origin=totalTranslation, camera=0)
         
     # total translation vector
+    global totalTranslation
     totalTranslation = [0, 0, 0]
-    # TODO: Add translation min/max value customization
     # translationLimit
-    translationLimit = 100
+    global translationLimit
+    translationLimit = form.positionSpinBox.value()
+
+    # callback for the "Position" spin box
+    def positionSpinBoxChanged():
+        # Update the translationLimit
+        global translationLimit
+        translationLimit = form.positionSpinBox.value()
+        # lock the signals from the translation sliders
+        form.xTranslationSlider.blockSignals(True)
+        form.yTranslationSlider.blockSignals(True)
+        form.zTranslationSlider.blockSignals(True)
+        # Update the translation sliders
+        form.xTranslationSlider.setValue(form.xTranslationSlider.value())
+        form.yTranslationSlider.setValue(form.yTranslationSlider.value())
+        form.zTranslationSlider.setValue(form.zTranslationSlider.value())
+        # unlock the signals from the translation sliders
+        form.xTranslationSlider.blockSignals(False)
+        form.yTranslationSlider.blockSignals(False)
+        form.zTranslationSlider.blockSignals(False)
+
     # callback for translation sliders
     def translate():
         # Get the current slider values
@@ -142,7 +164,6 @@ def make_dialog():
         cmd.translate([dx, dy, dz], currentObject, camera=0)
 
     # Hookup callback functions for ui elements
-    form.resetTransform.clicked.connect(reset)
     form.xRotationSlider.valueChanged.connect(rotate)
     form.yRotationSlider.valueChanged.connect(rotate)
     form.zRotationSlider.valueChanged.connect(rotate)
@@ -150,6 +171,8 @@ def make_dialog():
     form.yTranslationSlider.valueChanged.connect(translate)
     form.zTranslationSlider.valueChanged.connect(translate)
     form.selectionComboBox.currentTextChanged.connect(selectionChanged)
+    form.positionSpinBox.valueChanged.connect(positionSpinBoxChanged)
+
 
     # Cleanup when the window is closed
     def cleanup():
