@@ -195,9 +195,9 @@
   <widget class="QPushButton" name="resetTransform">
    <property name="geometry">
     <rect>
-     <x>280</x>
+     <x>270</x>
      <y>130</y>
-     <width>41</width>
+     <width>51</width>
      <height>23</height>
     </rect>
    </property>
@@ -205,17 +205,17 @@
     <string>Reset</string>
    </property>
   </widget>
-  <widget class="QLabel" name="selectionLabel">
+  <widget class="QComboBox" name="selectionComboBox">
    <property name="geometry">
     <rect>
      <x>10</x>
      <y>130</y>
-     <width>271</width>
-     <height>21</height>
+     <width>251</width>
+     <height>22</height>
     </rect>
    </property>
-   <property name="text">
-    <string>Current Selection: None</string>
+   <property name="insertPolicy">
+    <enum>QComboBox::InsertAlphabetically</enum>
    </property>
   </widget>
  </widget>

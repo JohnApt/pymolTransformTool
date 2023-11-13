@@ -36,9 +36,9 @@ def make_dialog():
 
     import math
 
-    # If there is no (sele), prompt the user to select an object in the console
-    if 'sele' not in cmd.get_names('selections'):
-        print('Please select an object to transform.')
+    # If there are no objects in the current session, return
+    if cmd.get_names() == []:
+        print("No objects found, please load an object to use the Transform Tool")
         return
     
     # Create a new window
@@ -48,11 +48,30 @@ def make_dialog():
     uifile = os.path.join(os.path.dirname(__file__), 'TransformTool.ui')
     form = loadUi(uifile, dialog)
 
-    # Get list of objects in the current session
-    objectList = cmd.get_object_list(selection='(sele)')
+    # Get the list of objects in the current session
+    objectList = cmd.get_names()
+    # Populate selectionComboBox with the list of objects
+    form.selectionComboBox.addItems(objectList)
+    # Set the current selection to the first object in the list
+    global currentObject
+    currentObject = objectList[0]
 
+    # callback for the "Selection" combo box
+    def selectionChanged():
+        resetSliders()
+        # Set the current selection to the selected object
+        global currentObject
+        currentObject = objectList[form.selectionComboBox.currentIndex()]
+        
     # callback for the "Reset" button
-    def reset():
+    def resetSliders():
+        # Block the signals from the sliders so they don't trigger their callbacks
+        form.xRotationSlider.blockSignals(True)
+        form.yRotationSlider.blockSignals(True)
+        form.zRotationSlider.blockSignals(True)
+        form.xTranslationSlider.blockSignals(True)
+        form.yTranslationSlider.blockSignals(True)
+        form.zTranslationSlider.blockSignals(True)
         # Reset all slider values to 0
         form.xRotationSlider.setValue(0)
         form.yRotationSlider.setValue(0)
@@ -60,13 +79,26 @@ def make_dialog():
         form.xTranslationSlider.setValue(0)
         form.yTranslationSlider.setValue(0)
         form.zTranslationSlider.setValue(0)
-        # Set the object transform to the original transform
-        for object in objectList:
-            print(object)
-            cmd.matrix_reset(object)
+        # Unblock the signals from the sliders
+        form.xRotationSlider.blockSignals(False)
+        form.yRotationSlider.blockSignals(False)
+        form.zRotationSlider.blockSignals(False)
+        form.xTranslationSlider.blockSignals(False)
+        form.yTranslationSlider.blockSignals(False)
+        form.zTranslationSlider.blockSignals(False)
+        # Reset the total rotation and translation vectors
+        global rotation
+        global translation
+        rotation = [0, 0, 0]
+        translation = [0, 0, 0]
+
+    # callback for the "Reset" button
+    def reset():
+        # Reset all slider values to 0
+        resetSliders()
 
     # total rotation vector
-    rotation = [0, 0, 0]
+    totalRotation = [0, 0, 0]
 
     # callback for rotation sliders
     def rotate():
@@ -75,41 +107,39 @@ def make_dialog():
         y = form.yRotationSlider.value()
         z = form.zRotationSlider.value()
         # Calculate the difference between the current and previous slider values
-        dx = x - rotation[0]
-        dy = y - rotation[1]
-        dz = z - rotation[2]
+        dx = x - totalRotation[0]
+        dy = y - totalRotation[1]
+        dz = z - totalRotation[2]
         # Update the total rotation vector
-        rotation[0] = x
-        rotation[1] = y
-        rotation[2] = z
-        # Rotate the object
-        for object in objectList:
-            cmd.rotate('x', dx, object)
-            cmd.rotate('y', dy, object)
-            cmd.rotate('z', dz, object)
+        totalRotation[0] = x
+        totalRotation[1] = y
+        totalRotation[2] = z
+        # Rotate the object about its center
+        cmd.rotate('x', dx, currentObject, origin=totalTranslation, camera=0)
+        cmd.rotate('y', dy, currentObject, origin=totalTranslation, camera=0)
+        cmd.rotate('z', dz, currentObject, origin=totalTranslation, camera=0)
         
     # total translation vector
-    translation = [0, 0, 0]
+    totalTranslation = [0, 0, 0]
     # TODO: Add translation min/max value customization
     # translationLimit
-    translationLimit = 10
+    translationLimit = 100
     # callback for translation sliders
     def translate():
         # Get the current slider values
-        x = form.xTranslationSlider.value()
-        y = form.yTranslationSlider.value()
-        z = form.zTranslationSlider.value()
+        x = form.xTranslationSlider.value() * translationLimit / 100
+        y = form.yTranslationSlider.value() * translationLimit / 100
+        z = form.zTranslationSlider.value() * translationLimit / 100
         # Calculate the difference between the current and previous slider values
-        dx = x - translation[0]
-        dy = y - translation[1]
-        dz = z - translation[2]
+        dx = x - totalTranslation[0]
+        dy = y - totalTranslation[1]
+        dz = z - totalTranslation[2]
         # Update the total translation vector
-        translation[0] = x
-        translation[1] = y
-        translation[2] = z
+        totalTranslation[0] = x
+        totalTranslation[1] = y
+        totalTranslation[2] = z
         # Translate the object
-        for object in objectList:
-            cmd.translate([dx, dy, dz], object)
+        cmd.translate([dx, dy, dz], currentObject, camera=0)
 
     # Hookup callback functions for ui elements
     form.resetTransform.clicked.connect(reset)
@@ -119,16 +149,17 @@ def make_dialog():
     form.xTranslationSlider.valueChanged.connect(translate)
     form.yTranslationSlider.valueChanged.connect(translate)
     form.zTranslationSlider.valueChanged.connect(translate)
-
-    # Hookup callback for selection changes
-    
+    form.selectionComboBox.currentTextChanged.connect(selectionChanged)
 
     # Cleanup when the window is closed
     def cleanup():
-        reset(1)
+        resetSliders()
+        print("Transform Tool closed")
         global dialog
         dialog = None
-    dialog.destroyed.connect(cleanup)
+
+    # Hookup cleanup function
+    dialog.finished.connect(cleanup)
 
     return dialog
 
