@@ -13,7 +13,7 @@ import os
 from pymol import cmd
 
 # Import Qt modules
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 def __init_plugin__(app=None):
     # add menu entry
@@ -69,8 +69,13 @@ class PymolObject:
             self.TotalRotation[1] += angle
         elif axis == "z":
             self.TotalRotation[2] += angle
-        # Add the action to the undo stack
-        self.undoStack.append(["rotate", axis, -angle])
+        # If the previous action was also a rotation about the same axis, add the angle to the previous action
+        if self.undoStack != [] and self.undoStack[-1][0] == "rotate" and self.undoStack[-1][1] == axis:
+            self.undoStack[-1][2] += angle
+        # Otherwise, add the action to the undo stack
+        else:
+            self.undoStack.append(["rotate", axis, angle])
+
     
     # Translate action
     def translate(self, vector):
@@ -78,8 +83,13 @@ class PymolObject:
         cmd.translate(vector, self.name, camera=0)
         # Update the total translation vector
         self.TotalTranslation = [self.TotalTranslation[0] + vector[0], self.TotalTranslation[1] + vector[1], self.TotalTranslation[2] + vector[2]]
-        # Add the action to the undo stack
-        self.undoStack.append(["translate", [-vector[0], -vector[1], -vector[2]]])
+        # If the previous action was also a translation whose dot product with the current translation is not 0, add the vector to the previous action
+        if self.undoStack != [] and self.undoStack[-1][0] == "translate" and (self.undoStack[-1][1][0] * vector[0] + self.undoStack[-1][1][1] * vector[1] + self.undoStack[-1][1][2] * vector[2]) != 0:
+            self.undoStack[-1][1] = [self.undoStack[-1][1][0] + vector[0], self.undoStack[-1][1][1] + vector[1], self.undoStack[-1][1][2] + vector[2]]
+        # Otherwise, add the action to the undo stack 
+        else:
+            self.undoStack.append(["translate", vector])
+
 
     # Undo action
     def undo(self):
@@ -90,16 +100,16 @@ class PymolObject:
         action = self.undoStack.pop()
         # Perform the inverse action, then add it to the redo stack
         if action[0] == "rotate":
-            self.rotate(action[1], action[2])
+            self.rotate(action[1], -action[2])
             self.undoStack.pop()
         elif action[0] == "translate":
-            self.translate(action[1])
+            self.translate([-action[1][0], -action[1][1], -action[1][2]])
             self.undoStack.pop()
         # Add the inverse action to the redo stack
         if action[0] == "rotate":
-            self.redoStack.append(["rotate", action[1], -action[2]])
+            self.redoStack.append(["rotate", action[1], action[2]])
         elif action[0] == "translate":
-            self.redoStack.append(["translate", [-action[1][0], -action[1][1], -action[1][2]]])
+            self.redoStack.append(["translate", action[1]])
     
     # Redo action
     def redo(self):
@@ -128,6 +138,8 @@ class PymolObjectList:
         self.list = []
         # Call update to populate the list
         self.update()
+        # Set the current selection to the first object in the list
+        self.currentSelection = self.list[0]
 
     # Update the list of objects
     def update(self):
@@ -137,13 +149,17 @@ class PymolObjectList:
                 # If the object is not already in the list, add it
                 if object not in [object.name for object in self.list]:
                     self.list.append(PymolObject(object))
+    
+    # Change the current selection
+    def changeSelection(self, newSelection):
+        # Set the current selection to the new selection
+        self.currentSelection = newSelection
 
 class TransformTool:
     def __init__(self, pymolObjectList, ui):
         self.pymolObjectList = pymolObjectList
         self.ui = ui
-        # Current object is a reference to the PymolObject selected in the selectionComboBox
-        self.currentObject = None
+        self.currentObject = self.pymolObjectList.currentSelection
         self.translationLimit = self.ui.positionSpinBox.value()
         self.updateSelectionList()
 
@@ -154,39 +170,41 @@ class TransformTool:
         self.ui.xTranslationSlider.valueChanged.connect(self.translate)
         self.ui.yTranslationSlider.valueChanged.connect(self.translate)
         self.ui.zTranslationSlider.valueChanged.connect(self.translate)
-        self.ui.selectionComboBox.activated.connect(self.updateSelectionList)
         self.ui.selectionComboBox.currentTextChanged.connect(self.changeSelection)
         self.ui.positionSpinBox.valueChanged.connect(self.positionSpinBoxChanged)
         self.ui.resetButton.clicked.connect(self.reset)
         self.ui.undoButton.clicked.connect(self.undo)
         self.ui.redoButton.clicked.connect(self.redo)
+        # when dialog is closed, cleanup
+        dialog.finished.connect(self.cleanup)
     
     # Update the list of objects and the selectionComboBox
     def updateSelectionList(self):
         # Update the list of objects
         self.pymolObjectList.update()
-        # Populate selectionComboBox with the list of objects
+        # Get the list of objects
+        objectList = self.pymolObjectList.list
+        # Get the current selection
+        currentSelection = self.pymolObjectList.currentSelection
+        # Clear the selectionComboBox
         self.ui.selectionComboBox.clear()
-        self.ui.selectionComboBox.addItems([object.name for object in self.pymolObjectList.list])
-        # Set the currentObject to the object with the same name as the current selection
-        for object in self.pymolObjectList.list:
-            if object.name == self.ui.selectionComboBox.currentText():
-                self.currentObject = object
-                print(self.currentObject.name)
-        # If the current selection is not in the list, set the currentObject to the first object in the list
-        if self.currentObject == None:
-            self.currentObject = self.pymolObjectList.list[0]
+        # Populate selectionComboBox with the list of objects
+        self.ui.selectionComboBox.addItems([object.name for object in objectList])
+        # Set the current selection to the currentSelection
+        self.ui.selectionComboBox.setCurrentText(currentSelection.name)
+        # Set the current object to the currentSelection
+        self.currentObject = currentSelection
+        # Update the sliders
         self.updateSliders()
     
     # Change selectionComboBox to new selection
     def changeSelection(self):
-        # Set the selectionComboBox to the currentText
-        self.ui.selectionComboBox.setCurrentText(self.currentObject.name)
-        
-        # Set the currentObject to the object with the same name as the current selection
-        for object in self.pymolObjectList.list:
-            if object.name == self.ui.selectionComboBox.currentText():
-                self.currentObject = object
+        # Get the new selection
+        newSelection = self.ui.selectionComboBox.currentText()
+        # Change the current selection
+        self.pymolObjectList.changeSelection([object for object in self.pymolObjectList.list if object.name == newSelection][0])
+        # Set the current object to the new selection
+        self.currentObject = self.pymolObjectList.currentSelection
         # Update the sliders
         self.updateSliders()
 
@@ -273,11 +291,23 @@ class TransformTool:
     
     # callback for the "Redo" button
     def redo(self):
-        print("redo")
         # Redo the last action
         self.currentObject.redo()
         # Update the sliders
         self.updateSliders()
+
+    # callback for when the dialog is closed
+    def cleanup(self):
+        # Null the global references
+        global dialog
+        global ui
+        global objectList
+        global transformToolInstance
+        dialog = None
+        ui = None
+        objectList = None
+        transformToolInstance = None
+
 
 
 # Ui_Form. This is generated code made by converting the .ui file to .py using pyuic5
@@ -400,173 +430,3 @@ class Ui_Form(object):
         self.resetButton.setText(_translate("Form", "Reset"))
         self.redoButton.setText(_translate("Form", "Redo"))
         self.undoButton.setText(_translate("Form", "Undo"))
-
-
-
-
-
-
-# Old code, refactoring in progress
-# def make_dialog():
-#     # Entrypoint into Pymol API
-#     from pymol import cmd
-
-#     from pymol.Qt import QtWidgets
-#     from pymol.Qt.utils import loadUi
-
-#     import math
-
-#     # If there are no objects in the current session, return
-#     if cmd.get_names() == []:
-#         print("No objects found, please load an object to use the Transform Tool")
-#         return
-    
-#     # Create a new window
-#     dialog = QtWidgets.QDialog()
-
-#     # Load the UI
-#     uifile = os.path.join(os.path.dirname(__file__), 'TransformTool.ui')
-#     form = loadUi(uifile, dialog)
-
-#     # Get the list of objects in the current session
-#     objectList = cmd.get_names()
-#     # Populate selectionComboBox with the list of objects
-#     form.selectionComboBox.addItems(objectList)
-#     # Set the current selection to the first object in the list
-#     global currentObject
-#     currentObject = objectList[0]
-
-#     # callback for the "Selection" combo box
-#     def selectionChanged():
-#         resetSliders()
-#         # Set the current selection to the selected object
-#         global currentObject
-#         currentObject = objectList[form.selectionComboBox.currentIndex()]
-        
-#     # callback for the "Reset" button
-#     def resetSliders():
-#         # Block the signals from the sliders so they don't trigger their callbacks
-#         form.xRotationSlider.blockSignals(True)
-#         form.yRotationSlider.blockSignals(True)
-#         form.zRotationSlider.blockSignals(True)
-#         form.xTranslationSlider.blockSignals(True)
-#         form.yTranslationSlider.blockSignals(True)
-#         form.zTranslationSlider.blockSignals(True)
-#         # Reset all slider values to 0
-#         form.xRotationSlider.setValue(0)
-#         form.yRotationSlider.setValue(0)
-#         form.zRotationSlider.setValue(0)
-#         form.xTranslationSlider.setValue(0)
-#         form.yTranslationSlider.setValue(0)
-#         form.zTranslationSlider.setValue(0)
-#         # Unblock the signals from the sliders
-#         form.xRotationSlider.blockSignals(False)
-#         form.yRotationSlider.blockSignals(False)
-#         form.zRotationSlider.blockSignals(False)
-#         form.xTranslationSlider.blockSignals(False)
-#         form.yTranslationSlider.blockSignals(False)
-#         form.zTranslationSlider.blockSignals(False)
-#         # Reset the total rotation and translation vectors
-#         global rotation
-#         global translation
-#         rotation = [0, 0, 0]
-#         translation = [0, 0, 0]
-    
-#     # TODO: Implement reset button
-#     # callback for the "Reset" button
-#     # def reset():
-#     #     # Reset all slider values to 0
-#     #     resetSliders()
-
-#     # total rotation vector
-#     global totalRotation
-#     totalRotation = [0, 0, 0]
-
-#     # callback for rotation sliders
-#     def rotate():
-#         # Get the current slider values
-#         x = form.xRotationSlider.value()
-#         y = form.yRotationSlider.value()
-#         z = form.zRotationSlider.value()
-#         # Calculate the difference between the current and previous slider values
-#         dx = x - totalRotation[0]
-#         dy = y - totalRotation[1]
-#         dz = z - totalRotation[2]
-#         # Update the total rotation vector
-#         totalRotation[0] = x
-#         totalRotation[1] = y
-#         totalRotation[2] = z
-#         # Rotate the object about its center
-#         CoM = cmd.centerofmass(currentObject)
-        
-#         cmd.rotate('x', dx, currentObject, origin=CoM, camera=0)
-#         cmd.rotate('y', dy, currentObject, origin=CoM, camera=0)
-#         cmd.rotate('z', dz, currentObject, origin=CoM, camera=0)
-        
-#     # total translation vector
-#     global totalTranslation
-#     totalTranslation = [0, 0, 0]
-#     # translationLimit
-#     global translationLimit
-#     translationLimit = form.positionSpinBox.value()
-
-#     # callback for the "Position" spin box
-#     def positionSpinBoxChanged():
-#         # Update the translationLimit
-#         global translationLimit
-#         translationLimit = form.positionSpinBox.value()
-#         # lock the signals from the translation sliders
-#         form.xTranslationSlider.blockSignals(True)
-#         form.yTranslationSlider.blockSignals(True)
-#         form.zTranslationSlider.blockSignals(True)
-#         # Update the translation sliders
-#         form.xTranslationSlider.setValue(form.xTranslationSlider.value())
-#         form.yTranslationSlider.setValue(form.yTranslationSlider.value())
-#         form.zTranslationSlider.setValue(form.zTranslationSlider.value())
-#         # unlock the signals from the translation sliders
-#         form.xTranslationSlider.blockSignals(False)
-#         form.yTranslationSlider.blockSignals(False)
-#         form.zTranslationSlider.blockSignals(False)
-
-#     # callback for translation sliders
-#     def translate():
-#         # Get the current slider values
-#         x = form.xTranslationSlider.value() * translationLimit / 100
-#         y = form.yTranslationSlider.value() * translationLimit / 100
-#         z = form.zTranslationSlider.value() * translationLimit / 100
-#         # Calculate the difference between the current and previous slider values
-#         dx = x - totalTranslation[0]
-#         dy = y - totalTranslation[1]
-#         dz = z - totalTranslation[2]
-#         # Update the total translation vector
-#         totalTranslation[0] = x
-#         totalTranslation[1] = y
-#         totalTranslation[2] = z
-#         # Translate the object
-#         cmd.translate([dx, dy, dz], currentObject, camera=0)
-
-#     # Hookup callback functions for ui elements
-#     form.xRotationSlider.valueChanged.connect(rotate)
-#     form.yRotationSlider.valueChanged.connect(rotate)
-#     form.zRotationSlider.valueChanged.connect(rotate)
-#     form.xTranslationSlider.valueChanged.connect(translate)
-#     form.yTranslationSlider.valueChanged.connect(translate)
-#     form.zTranslationSlider.valueChanged.connect(translate)
-#     form.selectionComboBox.currentTextChanged.connect(selectionChanged)
-#     form.positionSpinBox.valueChanged.connect(positionSpinBoxChanged)
-
-
-#     # Cleanup when the window is closed
-#     def cleanup():
-#         resetSliders()
-#         print("Transform Tool closed")
-#         global dialog
-#         dialog = None
-
-#     # Hookup cleanup function
-#     dialog.finished.connect(cleanup)
-
-#     return dialog
-
-
-    
