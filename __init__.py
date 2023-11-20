@@ -171,6 +171,7 @@ class TransformTool:
         self.ui.yTranslationSlider.valueChanged.connect(self.translate)
         self.ui.zTranslationSlider.valueChanged.connect(self.translate)
         self.ui.selectionComboBox.currentTextChanged.connect(self.changeSelection)
+        self.ui.selectionComboBox.highlighted.connect(self.updateSelectionList)
         self.ui.positionSpinBox.valueChanged.connect(self.positionSpinBoxChanged)
         self.ui.resetButton.clicked.connect(self.reset)
         self.ui.undoButton.clicked.connect(self.undo)
@@ -182,16 +183,17 @@ class TransformTool:
     def updateSelectionList(self):
         # Update the list of objects
         self.pymolObjectList.update()
-        # Get the list of objects
-        objectList = self.pymolObjectList.list
         # Get the current selection
         currentSelection = self.pymolObjectList.currentSelection
         # Clear the selectionComboBox
         self.ui.selectionComboBox.clear()
         # Populate selectionComboBox with the list of objects
-        self.ui.selectionComboBox.addItems([object.name for object in objectList])
-        # Set the current selection to the currentSelection
-        self.ui.selectionComboBox.setCurrentText(currentSelection.name)
+        for object in self.pymolObjectList.list:
+            self.ui.selectionComboBox.addItem(object.name)
+        # Get the index of the current selection
+        index = self.ui.selectionComboBox.findText(currentSelection.name)
+        # Set the current selection in the selectionComboBox
+        self.ui.selectionComboBox.setCurrentIndex(index)
         # Set the current object to the currentSelection
         self.currentObject = currentSelection
         # Update the sliders
