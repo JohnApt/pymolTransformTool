@@ -47,13 +47,15 @@ def run_plugin_gui():
         transformToolInstance = TransformTool(objectList, ui)
     # Check if dialog was successfully created, then show it
     if dialog is not None:
+        #TODO: Bring dialog to front
         dialog.show()
 
 class PymolObject:
     def __init__(self, name):
         self.name = name
-        self.TotalRotation = [0, 0, 0]
-        self.TotalTranslation = [0, 0, 0]
+        # Initialize the total rotation and translation vectors as floats
+        self.TotalRotation = [0.0, 0.0, 0.0]
+        self.TotalTranslation = [0.0, 0.0, 0.0]
         self.undoStack = []
         self.redoStack = []
     
@@ -123,6 +125,7 @@ class PymolObject:
             self.rotate(action[1], action[2])
         elif action[0] == "translate":
             self.translate(action[1])
+    
     # Reset action
     def reset(self):
         # Reset the object by going through the entire undo stack
@@ -171,7 +174,7 @@ class TransformTool:
         self.ui.yTranslationSlider.valueChanged.connect(self.translate)
         self.ui.zTranslationSlider.valueChanged.connect(self.translate)
         self.ui.selectionComboBox.currentTextChanged.connect(self.changeSelection)
-        self.ui.selectionComboBox.highlighted.connect(self.updateSelectionList)
+        #self.ui.selectionComboBox.highlighted.connect(self.updateSelectionList)
         self.ui.positionSpinBox.valueChanged.connect(self.positionSpinBoxChanged)
         self.ui.resetButton.clicked.connect(self.reset)
         self.ui.undoButton.clicked.connect(self.undo)
@@ -179,34 +182,26 @@ class TransformTool:
         # when dialog is closed, cleanup
         dialog.finished.connect(self.cleanup)
     
-    # Update the list of objects and the selectionComboBox
+    # Update the list of objects and the selectionComboBox, and set the current object to the current selection
     def updateSelectionList(self):
         # Update the list of objects
         self.pymolObjectList.update()
-        # Get the current selection
-        currentSelection = self.pymolObjectList.currentSelection
         # Clear the selectionComboBox
         self.ui.selectionComboBox.clear()
-        # Populate selectionComboBox with the list of objects
+        # Add each object in the list to the selectionComboBox
         for object in self.pymolObjectList.list:
             self.ui.selectionComboBox.addItem(object.name)
-        # Get the index of the current selection
-        index = self.ui.selectionComboBox.findText(currentSelection.name)
-        # Set the current selection in the selectionComboBox
-        self.ui.selectionComboBox.setCurrentIndex(index)
-        # Set the current object to the currentSelection
-        self.currentObject = currentSelection
-        # Update the sliders
-        self.updateSliders()
+        # Lock the currentTextChanged signal from the selectionComboBox
+        self.ui.selectionComboBox.blockSignals(True)
+        # Set the current selection to the current object
+        self.ui.selectionComboBox.setCurrentText(self.currentObject.name)
+        # Unlock the currentTextChanged signal from the selectionComboBox
+        self.ui.selectionComboBox.blockSignals(False)
     
     # Change selectionComboBox to new selection
     def changeSelection(self):
-        # Get the new selection
-        newSelection = self.ui.selectionComboBox.currentText()
-        # Change the current selection
-        self.pymolObjectList.changeSelection([object for object in self.pymolObjectList.list if object.name == newSelection][0])
-        # Set the current object to the new selection
-        self.currentObject = self.pymolObjectList.currentSelection
+        # Set the current object to the current selection
+        self.currentObject = self.pymolObjectList.list[self.ui.selectionComboBox.currentIndex()]
         # Update the sliders
         self.updateSliders()
 
@@ -221,20 +216,21 @@ class TransformTool:
     
     # Update the sliders to match the current object's total rotation and translation
     def updateSliders(self):
-        # Block the signals from the sliders so they don't trigger their callbacks
+        # Block the signals from the sliders so they don't trigger their callbacks. Cast the values to ints to avoid floating point errors
         self.blockSliderSignals(True)
-        # Reset all slider values to 0
-        self.ui.xRotationSlider.setValue(self.currentObject.TotalRotation[0])
-        self.ui.yRotationSlider.setValue(self.currentObject.TotalRotation[1])
-        self.ui.zRotationSlider.setValue(self.currentObject.TotalRotation[2])
-        self.ui.xTranslationSlider.setValue(self.currentObject.TotalTranslation[0] * 100 / self.translationLimit)
-        self.ui.yTranslationSlider.setValue(self.currentObject.TotalTranslation[1] * 100 / self.translationLimit)
-        self.ui.zTranslationSlider.setValue(self.currentObject.TotalTranslation[2] * 100 / self.translationLimit)
+        self.ui.xRotationSlider.setValue(int(self.currentObject.TotalRotation[0]))
+        self.ui.yRotationSlider.setValue(int(self.currentObject.TotalRotation[1]))
+        self.ui.zRotationSlider.setValue(int(self.currentObject.TotalRotation[2]))
+        self.ui.xTranslationSlider.setValue(int(self.currentObject.TotalTranslation[0] * 100 / self.translationLimit))
+        self.ui.yTranslationSlider.setValue(int(self.currentObject.TotalTranslation[1] * 100 / self.translationLimit))
+        self.ui.zTranslationSlider.setValue(int(self.currentObject.TotalTranslation[2] * 100 / self.translationLimit))
         # Unblock the signals from the sliders
         self.blockSliderSignals(False)
 
     # callback for the "Position" spin box
     def positionSpinBoxChanged(self):
+        # Reset the object using the reset function
+        self.reset()
         # Update the translationLimit
         self.translationLimit = self.ui.positionSpinBox.value()
         # lock the signals from the translation sliders
